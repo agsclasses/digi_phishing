@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Simulador de bandeja de entrada para practicar la detección de phishing. Digitalización 4º ESO.">
+<title>¿Phishing o legítimo?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: misión + ficha arriba; debajo, cliente de correo de dos paneles (lista | lectura) que se apila en móvil */
+:root {
+  --bg: #e9edf1;
+  --surface: #ffffff;
+  --surface-2: #f4f6f9;
+  --ink: #16202b;
+  --muted: #586473;
+  --line: #d3dae2;
+  --accent: #1d56b0;
+  --accent-soft: #e3ecfa;
+  --warn: #8a4b00;
+  --warn-soft: #fff1dc;
+  --bubble-in: #ffffff;
+  --chat-bg: #e7e1d8;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "DejaVu Sans Mono", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151c; --surface: #18212b; --surface-2: #1e2834; --ink: #e6ebf1; --muted: #9aa7b6;
+    --line: #2c3846; --accent: #7fa8ec; --accent-soft: #1d2d47; --warn: #f2b765; --warn-soft: #3a2a12;
+    --bubble-in: #232f3c; --chat-bg: #141b23; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151c; --surface: #18212b; --surface-2: #1e2834; --ink: #e6ebf1; --muted: #9aa7b6;
+  --line: #2c3846; --accent: #7fa8ec; --accent-soft: #1d2d47; --warn: #f2b765; --warn-soft: #3a2a12;
+  --bubble-in: #232f3c; --chat-bg: #141b23; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 16px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.kicker { font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+.brief { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.card h2 { font-size: 16px; margin-bottom: 8px; }
+.card p { margin: 0 0 8px; max-width: 65ch; }
+.card ol, .card ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.tip { background: var(--warn-soft); color: var(--ink); border-left: 4px solid var(--warn); padding: 8px 12px; border-radius: 6px; margin-top: 10px; font-size: 14px; }
+
+.client { display: grid; grid-template-columns: 340px 1fr; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-height: 560px; }
+.list { border-right: 1px solid var(--line); background: var(--surface-2); display: flex; flex-direction: column; }
+.list-head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.list-head strong { font-size: 15px; }
+.progress { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.items { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.item { width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; font: inherit; padding: 10px 14px; display: grid; grid-template-columns: 40px 1fr; gap: 10px; cursor: pointer; }
+.item:hover { background: var(--accent-soft); }
+.item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.item[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+.num { font-family: var(--font-mono); font-weight: 600; font-size: 13px; color: var(--accent); padding-top: 2px; }
+.meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.chan { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+.chan svg { width: 13px; height: 13px; }
+.from { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item.unread .from::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: 6px; vertical-align: middle; }
+.subj { font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.reader { display: flex; flex-direction: column; min-width: 0; }
+.r-head { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.r-head h2 { font-size: 20px; }
+.r-from { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; flex: none; }
+.r-from .who { display: grid; }
+.r-from .who span { font-size: 13px; color: var(--muted); }
+.btn { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.details { font-family: var(--font-mono); font-size: 13px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; overflow-x: auto; }
+.details dt { color: var(--muted); }
+.details dd { margin: 0; word-break: break-all; }
+.r-body { padding: 18px 20px; flex: 1; overflow-y: auto; }
+.mail { max-width: 65ch; }
+.mail p { margin: 0 0 12px; }
+.mail .cta { display: inline-block; background: var(--accent); color: #fff; padding: 9px 16px; border-radius: 6px; text-decoration: none; font-weight: 600; }
+:root[data-theme="dark"] .mail .cta { color: #0f151c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mail .cta { color: #0f151c; } }
+.mail .small { font-size: 12px; color: var(--muted); }
+.mail table { border-collapse: collapse; margin: 0 0 12px; font-size: 14px; }
+.mail td { padding: 3px 14px 3px 0; vertical-align: top; }
+.mail td:first-child { color: var(--muted); }
+.lnk { color: var(--accent); }
+.attach { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.chip { font-family: var(--font-mono); font-size: 13px; border: 1px dashed var(--line); background: var(--surface-2); color: var(--ink); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+
+.chat { background: var(--chat-bg); border-radius: 10px; padding: 16px; display: grid; gap: 8px; max-width: 520px; }
+.bubble { background: var(--bubble-in); padding: 8px 12px; border-radius: 10px; border-top-left-radius: 2px; max-width: 90%; justify-self: start; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+.bubble time { display: block; text-align: right; font-size: 11px; color: var(--muted); }
+.chat-note { font-size: 12px; color: var(--muted); text-align: center; background: var(--surface); border-radius: 6px; padding: 4px 8px; justify-self: center; }
+
+.status { font-family: var(--font-mono); font-size: 12px; padding: 7px 20px; border-top: 1px solid var(--line); background: var(--surface-2); color: var(--muted); min-height: 32px; word-break: break-all; }
+.status b { color: var(--ink); font-weight: 600; }
+.notice { margin: 0 20px 14px; background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 6px; padding: 8px 12px; font-size: 14px; }
+.notice code { font-family: var(--font-mono); word-break: break-all; }
+footer { font-size: 12px; color: var(--muted); }
+
+@media (max-width: 860px) {
+  .brief { grid-template-columns: 1fr; }
+  .client { grid-template-columns: 1fr; }
+  .list { border-right: 0; border-bottom: 1px solid var(--line); }
+  .items { max-height: 320px; }
+}
+@media (prefers-reduced-motion: no-preference) { .item, .btn { transition: background-color .12s, border-color .12s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kicker">Digitalización · 4º ESO · Seguridad y fraudes en la red</div>
+    <h1>¿Phishing o legítimo?</h1>
+  </header>
+
+  <section class="brief">
+    <div class="card">
+      <h2>Tu misión</h2>
+      <p>Álex, de 4º ESO, cree que alguien está intentando robarle las cuentas. Esta semana le han llegado los 10 mensajes de abajo. Algunos son de fiar y otros son trampas.</p>
+      <ol>
+        <li>Abre cada mensaje y analízalo con calma.</li>
+        <li>Pulsa <b>Ver detalles</b> para ver el remitente real.</li>
+        <li>Pasa el ratón por encima de los enlaces (sin hacer clic) y mira abajo el destino real.</li>
+        <li>Responde en el cuestionario de Aules: veredicto e indicador de cada mensaje.</li>
+      </ol>
+      <div class="tip">Para el indicador, cita el dato exacto: una dirección, un trozo de URL o una frase. «Parece raro» no puntúa.</div>
+    </div>
+    <div class="card">
+      <h2>Lo que sabemos de Álex</h2>
+      <ul>
+        <li>15 años, estudia 4º ESO en el IES María Carbonell.</li>
+        <li>Tiene cuenta en <b>GameVault</b> (juegos), <b>Fotogram</b> (fotos) y <b>StreamBox</b> (series; la paga su familia con tarjeta).</li>
+        <li>Estrenó móvil el martes 18 por la tarde.</li>
+        <li>Espera unas zapatillas que pidió a la tienda online RunPlanet.</li>
+        <li>No tiene cuenta en ningún banco.</li>
+        <li>Hace 2 minutos ha iniciado sesión en GameVault desde el ordenador del aula.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="client" aria-label="Bandeja de entrada de Álex">
+    <div class="list">
+      <div class="list-head"><strong>Bandeja de entrada</strong><span class="progress" id="progress">0 de 10 abiertos</span></div>
+      <ul class="items" id="items"></ul>
+    </div>
+    <div class="reader">
+      <div class="r-head" id="rhead"></div>
+      <div class="r-body" id="rbody"></div>
+      <div id="noticeSlot"></div>
+      <div class="status" id="status" aria-live="polite">Pasa el ratón por un enlace para ver a dónde lleva de verdad.</div>
+    </div>
+  </section>
+
+  <footer>Ejercicio de clase. GameVault, Fotogram, StreamBox, PaqExpress, Banco Turia, RunPlanet y Bono Joven Digital son nombres inventados, y el aviso de Aules es una simulación hecha para clase. Ningún enlace ni archivo de esta página funciona.</footer>
+</div>
+
+<script>
+const ICONS = {
+  correo: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M2 4l6 5 6-5"/></svg>',
+  sms: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="1.5" width="8" height="13" rx="1.5"/><path d="M7 12.5h2"/></svg>',
+  whatsapp: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 13l.8-2.6A5.5 5.5 0 1 1 6 12.6z"/></svg>'
+};
+const L = (url, text, cls) => `<a href="#" class="lnk${cls ? ' ' + cls : ''}" data-url="${url}">${text}</a>`;
+
+const MSGS = [
+  { id: "01", channel: "correo", fromName: "GameVault Soporte", fromAddr: "soporte@gamevault-security-check.xyz",
+    to: "alexnav07@correo.es", date: "lun 17 nov 2026, 23:48", subject: "⚠️ Tu cuenta será SUSPENDIDA en 24 horas",
+    body: `<p>Estimado usuario,</p>
+<p>Hemos detectado actividad sospechosa en tu cuenta. Por motivos de seguridad, tu cuenta y todos tus juegos (valorados en 347,50 €) serán <b>eliminados en 24 horas</b> si no verificas tu identidad.</p>
+<p>${L("http://gamevault-security-check.xyz/login.php", "VERIFICAR MI CUENTA AHORA", "cta")}</p>
+<p>Si no realizas la verificación, no podremos recuperar tu cuenta.</p>
+<p>El equipo de GameVault</p>` },
+
+  { id: "02", channel: "correo", fromName: "Aules · IES María Carbonell", fromAddr: "no-reply@aules.edu.gva.es",
+    to: "alexnav07@correo.es", date: "mar 18 nov 2026, 09:12", subject: "Nueva tarea en Digitalización 4º ESO: Práctica de redes domésticas",
+    body: `<p>Hola, Álex:</p>
+<p>Se ha publicado una nueva tarea en el curso <b>Digitalización 4º ESO</b>.</p>
+<table><tr><td>Tarea</td><td>Práctica de redes domésticas</td></tr><tr><td>Entrega</td><td>viernes 28 de noviembre, 23:59</td></tr></table>
+<p>${L("https://aules.edu.gva.es/ed/mod/assign/view.php?id=48213", "Ir a la tarea")}</p>
+<p class="small">Recibes este mensaje porque estás matriculado/a en este curso. Puedes cambiar tus preferencias de notificación desde tu perfil en Aules.</p>` },
+
+  { id: "03", channel: "sms", fromName: "+34 611 48 27 93", fromAddr: "+34 611 48 27 93 (número de móvil)",
+    to: "Móvil de Álex", date: "mar 18 nov 2026, 11:37", subject: "PaqExpress: Su envio no ha podido ser entregado…",
+    chat: [
+      { t: "11:37", text: `PaqExpress: Su envio no ha podido ser entregado por falta de pago de tasas aduaneras (1,99EUR). Abone antes de 12h o sera devuelto al remitente: ${L("https://paqexpress-entregas.info/pago", "https://paqexpress-entregas.info/pago")}` }
+    ] },
+
+  { id: "04", channel: "correo", fromName: "Fotogram", fromAddr: "security@mail.fotogram.com",
+    to: "alexnav07@correo.es", date: "mar 18 nov 2026, 17:43", subject: "Nuevo inicio de sesión en tu cuenta",
+    body: `<p>Hola, alex_nav07:</p>
+<p>Hemos detectado un inicio de sesión nuevo en tu cuenta.</p>
+<table><tr><td>Dispositivo</td><td>Android · Samsung Galaxy A35</td></tr><tr><td>Ubicación aproximada</td><td>Benetússer, España</td></tr><tr><td>Fecha</td><td>martes 18 nov, 17:42</td></tr></table>
+<p><b>Si has sido tú</b>, no tienes que hacer nada.</p>
+<p><b>Si no has sido tú</b>, abre la app de Fotogram y ve a <i>Configuración › Seguridad › Actividad de inicio de sesión</i> para cerrar esa sesión y cambiar tu contraseña.</p>
+<p class="small">Fotogram nunca te pedirá tu contraseña ni un código de verificación por correo electrónico.</p>` },
+
+  { id: "05", channel: "whatsapp", fromName: "+34 688 31 05 42", fromAddr: "+34 688 31 05 42 (no está en tus contactos)",
+    to: "WhatsApp de Álex", date: "mié 19 nov 2026, 20:05", subject: "Ey!! soy Marcos 😅 me han robado el móvil…",
+    chat: [
+      { t: "20:05", text: "Ey!! soy Marcos 😅 me han robado el móvil y este es mi número nuevo" },
+      { t: "20:05", text: "oye te acaba de llegar un sms con un código de 6 números?" },
+      { t: "20:06", text: "es que al configurar el whatsapp nuevo lo he puesto en tu número sin querer 🤦" },
+      { t: "20:06", text: "me lo pasas porfa?? es urgente que tengo que hablar con mi madre" }
+    ] },
+
+  { id: "06", channel: "correo", fromName: "Banco Turia", fromAddr: "notificaciones@bancoturia-seguridad.net",
+    to: "alexnav07@correo.es", date: "mié 19 nov 2026, 03:21", subject: "Actualizacion obligatoria de sus datos",
+    body: `<p>Estimado cliente:</p>
+<p>Devido a la nueva normativa europea de seguridad es obligatorio que actualize sus datos bancarios. En caso contrario su tarjeta quedara bloqueada de forma inmediata.</p>
+<p>Descargue y rellene el formulario adjunto o acceda al siguiente enlace:</p>
+<p>${L("https://bancoturia-seguridad.net/actualizar", "Actualizar mis datos", "cta")}</p>
+<p>Atentamente,<br>Departamento de Seguridad</p>`,
+    attachments: ["Formulario_Actualizacion.pdf.exe"] },
+
+  { id: "07", channel: "correo", fromName: "StreamBox", fromAddr: "facturacion@streambox.com",
+    to: "alexnav07@correo.es", date: "sáb 15 nov 2026, 08:02", subject: "Recibo de tu suscripción de noviembre",
+    body: `<p>Hola, Álex:</p>
+<p>Gracias por seguir con StreamBox. Este es el resumen de tu último pago:</p>
+<table><tr><td>Plan</td><td>Estándar con anuncios</td></tr><tr><td>Importe</td><td>6,99 €</td></tr><tr><td>Fecha de cobro</td><td>15 nov 2026</td></tr><tr><td>Método de pago</td><td>Tarjeta terminada en ••41</td></tr></table>
+<p>No tienes que hacer nada. Puedes consultar tus pagos cuando quieras desde <i>Cuenta › Facturación</i> en la app o en la web.</p>
+<p>${L("https://www.streambox.com/account/billing", "Ver mi cuenta")}</p>
+<p class="small">StreamBox · Este es un correo automático, no respondas a este mensaje.</p>` },
+
+  { id: "08", channel: "correo", fromName: "Fotogram", fromAddr: "no-reply@fotogram.com.appeal-center.net",
+    to: "alexnav07@correo.es", date: "jue 20 nov 2026, 07:55", subject: "Tu publicación ha sido denunciada por infringir derechos de autor",
+    body: `<p>Hola, alex_nav07:</p>
+<p>Hemos recibido una denuncia por infracción de derechos de autor relacionada con una de tus publicaciones (la canción usada en tu reel del 12 de noviembre).</p>
+<p>Según nuestras Normas de la comunidad, si no presentas una apelación en las próximas <b>48 horas</b>, tu cuenta será desactivada de forma permanente.</p>
+<p>Si crees que se trata de un error, puedes apelar aquí:</p>
+<p>${L("https://fotogram.com.appeal-center.net/apelacion?user=alex_nav07", "Presentar apelación", "cta")}</p>
+<p>Gracias por ayudarnos a mantener Fotogram como un lugar seguro.<br>El equipo de Fotogram</p>` },
+
+  { id: "09", channel: "sms", fromName: "GameVault", fromAddr: "GameVault (remitente con nombre, sin número)",
+    to: "Móvil de Álex", date: "jue 20 nov 2026, hace 2 minutos", subject: "Tu código de verificación de GameVault es 482913…",
+    chat: [
+      { t: "10:51", text: "Tu código de verificación de GameVault es 482913. Caduca en 10 minutos. No lo compartas con nadie: nuestro equipo nunca te lo pedirá." }
+    ] },
+
+  { id: "10", channel: "correo", fromName: "Bono Joven Digital", fromAddr: "ayudas@bonojoven-digital.com",
+    to: "alexnav07@correo.es", date: "jue 20 nov 2026, 08:30", subject: "Tienes 400 € de ayuda pendientes de cobro 🎮",
+    body: `<p>¡Enhorabuena!</p>
+<p>Por haber nacido en 2011 te corresponde el <b>Bono Joven Digital de 400 €</b> para comprar móviles, consolas y videojuegos.</p>
+<p>¡Solo quedan <b>37 bonos</b> disponibles en tu zona!</p>
+<p>Para recibirlo, introduce en el formulario tu DNI, tu fecha de nacimiento, el número de la tarjeta de tus padres y su código de seguridad (CVV).</p>
+<p>${L("http://bonojoven-digital.com/solicitud", "SOLICITAR MI BONO", "cta")}</p>
+<p class="small">Ayudas gestionadas por el Gobierno.</p>` }
+];
+
+const opened = new Set();
+let current = null;
+const $ = id => document.getElementById(id);
+const chanLabel = c => c === "correo" ? "Correo" : c === "sms" ? "SMS" : "WhatsApp";
+
+function renderList() {
+  $("items").innerHTML = MSGS.map(m => `
+    <li><button class="item${opened.has(m.id) ? "" : " unread"}" id="item-${m.id}" data-id="${m.id}" aria-current="${current === m.id}">
+      <span class="num">M${m.id}</span>
+      <span>
+        <span class="meta"><span class="chan">${ICONS[m.channel]}${chanLabel(m.channel)}</span><span>${m.date.split(",")[0]}</span></span>
+        <span class="from" style="display:block">${m.fromName}</span>
+        <span class="subj">${m.subject}</span>
+      </span>
+    </button></li>`).join("");
+  $("progress").textContent = `${opened.size} de ${MSGS.length} abiertos`;
+}
+
+function open(id, scroll) {
+  const m = MSGS.find(x => x.id === id);
+  current = id; opened.add(id);
+  const initial = m.fromName.replace(/[^A-Za-zÁÉÍÓÚáéíóú0-9+]/g, "").charAt(0) || "?";
+  $("rhead").innerHTML = `
+    <div class="kicker">Mensaje ${m.id} · ${chanLabel(m.channel)}</div>
+    <h2>${m.channel === "correo" ? m.subject : "Conversación con " + m.fromName}</h2>
+    <div class="r-from">
+      <div class="avatar" aria-hidden="true">${initial}</div>
+      <div class="who"><strong>${m.fromName}</strong><span>${m.date}</span></div>
+      <button class="btn" id="toggleDetails" aria-expanded="false" aria-controls="details">Ver detalles</button>
+    </div>
+    <dl class="details" id="details" hidden>
+      <dt>${m.channel === "correo" ? "De" : "Remitente"}</dt><dd>${m.channel === "correo" ? m.fromName + " &lt;" + m.fromAddr + "&gt;" : m.fromAddr}</dd>
+      <dt>Para</dt><dd>${m.to}</dd>
+      <dt>Fecha</dt><dd>${m.date}</dd>
+    </dl>`;
+  let body;
+  if (m.chat) {
+    body = `<div class="chat">${m.channel === "whatsapp" ? '<div class="chat-note">Este número no está en tus contactos</div>' : ""}
+      ${m.chat.map(b => `<div class="bubble">${b.text}<time>${b.t}</time></div>`).join("")}</div>`;
+  } else {
+    body = `<div class="mail">${m.body}</div>`;
+    if (m.attachments) body += `<div class="kicker" style="margin-top:8px">Adjuntos</div><div class="attach">${m.attachments.map(a => `<button class="chip" data-file="${a}">📎 ${a}</button>`).join("")}</div>`;
+  }
+  $("rbody").innerHTML = body;
+  $("noticeSlot").innerHTML = "";
+  $("status").innerHTML = "Pasa el ratón por un enlace para ver a dónde lleva de verdad.";
+  renderList();
+  if (scroll && window.matchMedia("(max-width: 860px)").matches) $("rhead").scrollIntoView({ block: "start" });
+}
+
+document.addEventListener("click", e => {
+  const item = e.target.closest(".item");
+  if (item) { open(item.dataset.id, true); return; }
+  if (e.target.id === "toggleDetails") {
+    const d = $("details"); d.hidden = !d.hidden;
+    e.target.setAttribute("aria-expanded", String(!d.hidden));
+    e.target.textContent = d.hidden ? "Ver detalles" : "Ocultar detalles";
+    return;
+  }
+  const lnk = e.target.closest(".lnk");
+  if (lnk) {
+    e.preventDefault();
+    $("noticeSlot").innerHTML = `<div class="notice"><b>Enlace desactivado.</b> En la vida real, ¿lo habrías abierto? Su destino real es <code>${lnk.dataset.url}</code></div>`;
+    return;
+  }
+  const chip = e.target.closest(".chip");
+  if (chip) {
+    $("noticeSlot").innerHTML = `<div class="notice"><b>Archivo bloqueado.</b> Fíjate bien en el nombre completo: <code>${chip.dataset.file}</code></div>`;
+  }
+});
+const showUrl = e => { const l = e.target.closest(".lnk"); if (l) $("status").innerHTML = `Destino real del enlace: <b>${l.dataset.url}</b>`; };
+document.addEventListener("mouseover", showUrl);
+document.addEventListener("focusin", showUrl);
+
+open("01", false);
+</script>
+</body>
+</html>
